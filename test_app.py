@@ -23,7 +23,7 @@ SAMPLE_DATA = {
                     "lotNumber": "123-TEST",
                     "lotRef": "TEST12345",
                     "priceResult": 1000.0,
-                    "photoPath": "test:test_image.jpg",
+                    "photoPath": "soulis/58/778358/H1081-L382842666.jpg",  # Real image path
                     "dateTimeLocal": "2024-03-01 00:00:00",
                     "dateTimeUTCUnix": 1709292000,
                     "currencyCode": "USD",
@@ -103,6 +103,7 @@ async def test_app():
             print("\n✓ Process endpoint is working\n")
             
         print("All tests passed!")
+        print("Image will be downloaded from: https://image.invaluable.com/housePhotos/soulis/58/778358/H1081-L382842666.jpg")
     
     except httpx.HTTPError as e:
         print(f"HTTP Error: {e}")

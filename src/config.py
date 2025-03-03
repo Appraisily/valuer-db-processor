@@ -1,7 +1,8 @@
 import os
 from functools import lru_cache
 from typing import Optional
-from pydantic import BaseSettings, PostgresDsn, validator
+from pydantic import PostgresDsn, validator
+from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -41,6 +42,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        from_attributes = True
 
 @lru_cache()
 def get_settings() -> Settings:

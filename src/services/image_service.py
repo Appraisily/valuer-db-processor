@@ -15,6 +15,9 @@ from src.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# Define the base URL for image downloads
+IMAGE_BASE_URL = "https://image.invaluable.com/housePhotos/"
+
 # Initialize GCS client if not in local development mode
 try:
     from google.cloud import storage
@@ -134,11 +137,13 @@ async def download_image(photo_path: str) -> Optional[bytes]:
         img.save(byte_io, 'JPEG')
         return byte_io.getvalue()
     
-    # Construct the full URL if it's a relative path
+    # Construct the full URL for invaluable.com images
     if not photo_path.startswith(('http://', 'https://')):
-        url = f"{settings.base_image_url}/{photo_path}"
+        url = f"{IMAGE_BASE_URL}{photo_path}"
     else:
         url = photo_path
+        
+    logger.info(f"Downloading image from: {url}")
         
     try:
         async with httpx.AsyncClient() as client:

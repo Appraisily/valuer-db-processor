@@ -128,10 +128,20 @@ async def create_lot(session: AsyncSession, lot_input: AuctionLotInput) -> Optio
             sale_type=lot_input.sale_type,
             lot_title=lot_input.lot_title,
             object_id=lot_input.object_id,
-            highlight_result=highlight_result,
-            ranking_info=ranking_info,
             processed_at=datetime.datetime.utcnow()
         )
+        
+        # Handle JSON fields based on database type
+        if 'sqlite' in settings.database_url:
+            # For SQLite, serialize to JSON string
+            if highlight_result:
+                lot_db.highlight_result = json.dumps(highlight_result)
+            if ranking_info:
+                lot_db.ranking_info = json.dumps(ranking_info)
+        else:
+            # For PostgreSQL, assign directly
+            lot_db.highlight_result = highlight_result
+            lot_db.ranking_info = ranking_info
         
         # Add to session
         session.add(lot_db)
@@ -166,7 +176,7 @@ async def update_lot(session: AsyncSession, existing_lot: AuctionLot, lot_input:
         highlight_result = lot_input.highlight_result.dict() if lot_input.highlight_result else None
         ranking_info = lot_input.ranking_info.dict() if lot_input.ranking_info else None
         
-        # Update fields
+        # Update basic fields
         existing_lot.lot_number = lot_input.lot_number
         existing_lot.price_result = lot_input.price_result
         existing_lot.original_photo_path = lot_input.photo_path
@@ -178,9 +188,24 @@ async def update_lot(session: AsyncSession, existing_lot: AuctionLot, lot_input:
         existing_lot.sale_type = lot_input.sale_type
         existing_lot.lot_title = lot_input.lot_title
         existing_lot.object_id = lot_input.object_id
-        existing_lot.highlight_result = highlight_result
-        existing_lot.ranking_info = ranking_info
         existing_lot.processed_at = datetime.datetime.utcnow()
+        
+        # Handle JSON fields based on database type
+        if 'sqlite' in settings.database_url:
+            # For SQLite, serialize to JSON string
+            if highlight_result:
+                existing_lot.highlight_result = json.dumps(highlight_result)
+            else:
+                existing_lot.highlight_result = None
+                
+            if ranking_info:
+                existing_lot.ranking_info = json.dumps(ranking_info)
+            else:
+                existing_lot.ranking_info = None
+        else:
+            # For PostgreSQL, assign directly
+            existing_lot.highlight_result = highlight_result
+            existing_lot.ranking_info = ranking_info
         
         # No need to add to session as it's already tracked
         await session.flush()
@@ -203,6 +228,28 @@ def create_response_from_db(lot_db: AuctionLot) -> AuctionLotResponse:
     Returns:
         AuctionLotResponse object
     """
+    # Handle JSON fields based on database type
+    highlight_result = None
+    ranking_info = None
+    
+    if 'sqlite' in settings.database_url:
+        # For SQLite, deserialize JSON string
+        if lot_db.highlight_result:
+            try:
+                highlight_result = json.loads(lot_db.highlight_result)
+            except:
+                highlight_result = None
+                
+        if lot_db.ranking_info:
+            try:
+                ranking_info = json.loads(lot_db.ranking_info)
+            except:
+                ranking_info = None
+    else:
+        # For PostgreSQL, use directly
+        highlight_result = lot_db.highlight_result
+        ranking_info = lot_db.ranking_info
+    
     return AuctionLotResponse(
         id=lot_db.id,
         lot_number=lot_db.lot_number,
@@ -218,7 +265,7 @@ def create_response_from_db(lot_db: AuctionLot) -> AuctionLotResponse:
         sale_type=lot_db.sale_type,
         lot_title=lot_db.lot_title,
         object_id=lot_db.object_id,
-        highlight_result=lot_db.highlight_result,
-        ranking_info=lot_db.ranking_info,
+        highlight_result=highlight_result,
+        ranking_info=ranking_info,
         processed_at=lot_db.processed_at
     ) 
