@@ -3,6 +3,18 @@
 ## Overview
 This service processes JSON files containing auction data, extracts images referenced in the data, uploads them to Google Cloud Storage (GCS), and stores the structured data in a database. The service will be deployed on Google Cloud Run for scalable, serverless execution.
 
+## Progress Summary
+- ✅ Basic development environment set up
+- ✅ Core application architecture implemented
+- ✅ JSON parsing and validation
+- ✅ Image processing with local storage fallback
+- ✅ Database operations with SQLite for local development
+- ✅ Error handling and logging mechanisms
+- ⏳ Deployment to Cloud Run and GCP services (pending)
+- ⏳ Production monitoring and alerting (pending)
+- ⏳ CI/CD pipeline (pending)
+- ⏳ Load testing (pending)
+
 ## JSON Structure Analysis
 Based on the example JSON file, we're processing auction data with the following structure:
 - Root object contains a `results` array
@@ -43,6 +55,7 @@ Based on the example JSON file, we're processing auction data with the following
 - **Optimization**: Resize/compress images if needed before storage
 - **Storage Path**: `{bucket_name}/{house_name}/{lot_ref}/{filename}`
 - **Metadata**: Store original URL as metadata on the GCS object
+- **Base URL**: Updated to use `https://image.invaluable.com/housePhotos/` as base URL
 
 ### 3. Database Design
 - **Schema**:
@@ -69,8 +82,8 @@ Based on the example JSON file, we're processing auction data with the following
   ```
 
 - **Database Options**:
-  - **Cloud SQL (PostgreSQL)**: For structured data with complex queries
-  - **Firestore**: For more flexible schema and automatic scaling
+  - **Local Development**: SQLite with aiosqlite for async operations
+  - **Production**: Prepared for Cloud SQL (PostgreSQL)
 
 ### 4. Performance Optimization
 - **Batch Processing**: Process multiple records in parallel
@@ -82,26 +95,27 @@ Based on the example JSON file, we're processing auction data with the following
 ### 5. Error Handling
 - **Validation**: Validate JSON structure before processing
 - **Transaction Management**: Use database transactions to ensure data consistency
-- **Error Recovery**: Implement dead-letter queue for failed processing attempts
-- **Monitoring**: Set up alerts for error thresholds
+- **Error Recovery**: Implement basic error handling
+- **Monitoring**: Set up basic logging
 
 ## Implementation Steps
 
 ### Phase 1: Basic Setup and Infrastructure
-1. Set up GCP project and enable required APIs
-2. Create GCS bucket for image storage
-3. Set up database (Cloud SQL or Firestore)
-4. Create initial Cloud Run service skeleton
-5. Configure CI/CD pipeline for deployment
+1. Set up local development environment
+2. Set up GCP project and enable required APIs
+3. Create GCS bucket for image storage
+4. Set up database with SQLite for local development
+5. Create initial Cloud Run service skeleton
+6. Configure CI/CD pipeline for deployment
 
 ### Phase 2: Core Functionality
 1. Implement JSON parsing and validation
-2. Implement image download and upload to GCS
+2. Implement image download and upload to storage
 3. Implement database operations for storing auction data
 4. Add basic error handling and logging
 
 ### Phase 3: Optimization and Monitoring
-1. Implement performance optimizations (batching, caching)
+1. Implement performance optimizations (batching)
 2. Add comprehensive error handling
 3. Set up monitoring and alerting
 4. Implement retry mechanisms and dead-letter queue
@@ -135,6 +149,7 @@ Based on the example JSON file, we're processing auction data with the following
 ├── tests/                   # Test cases
 ├── Dockerfile               # Container definition
 ├── requirements.txt         # Python dependencies
+├── test_app.py              # Testing script
 └── README.md                # Project documentation
 ```
 
@@ -172,11 +187,18 @@ Based on the example JSON file, we're processing auction data with the following
    - Database index optimization
    - Periodic review of GCS data retention policies
 
+## Next Steps
+1. Complete unit and integration tests
+2. Set up GCP project and required services
+3. Deploy to Cloud Run
+4. Set up monitoring and alerting
+5. Configure CI/CD pipeline
+
 ## Estimated Timeline
 
-1. **Phase 1**: 1-2 days
-2. **Phase 2**: 3-5 days
-3. **Phase 3**: 2-3 days
-4. **Phase 4**: 2-3 days
+1. **Phase 1**: ✅ Completed (local development)
+2. **Phase 2**: ✅ Completed
+3. **Phase 3**: ⏳ 1-2 days remaining
+4. **Phase 4**: ⏳ 2-3 days
 
-Total: 8-13 days depending on complexity and requirements 
+Remaining work: 3-5 days 
