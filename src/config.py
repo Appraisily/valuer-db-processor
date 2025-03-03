@@ -1,7 +1,7 @@
 import os
 from functools import lru_cache
-from typing import Optional
-from pydantic import PostgresDsn, validator
+from typing import Optional, Literal
+from pydantic import PostgresDsn, field_validator
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
@@ -14,35 +14,58 @@ class Settings(BaseSettings):
     
     These settings can be overridden with environment variables
     """
+    # Environment
+    env: Literal["development", "production"] = "development"
+    
     # Application
     app_name: str = "valuer-db-processor"
     app_version: str = "1.0.0"
-    debug: bool = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
+    debug: bool = False
+    
+    # Storage
+    use_gcs: bool = False
+    gcs_bucket: str = "valuer-auction-images"
+    local_storage_path: str = "./local_images"
     
     # Database
-    database_url: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/valuer_db")
-    db_pool_size: int = int(os.getenv("DB_POOL_SIZE", "5"))
-    db_max_overflow: int = int(os.getenv("DB_MAX_OVERFLOW", "10"))
-    db_pool_timeout: int = int(os.getenv("DB_POOL_TIMEOUT", "30"))
-    db_pool_recycle: int = int(os.getenv("DB_POOL_RECYCLE", "1800"))
-    sql_echo: bool = os.getenv("SQL_ECHO", "False").lower() in ("true", "1", "t")
-    
-    # Google Cloud Storage
-    gcs_bucket_name: str = os.getenv("GCS_BUCKET_NAME", "valuer-images")
+    db_type: Literal["sqlite", "postgresql"] = "sqlite"
+    db_name: str = "./local_data/valuer.db"
+    db_host: Optional[str] = None
+    db_user: Optional[str] = None
+    db_password: Optional[str] = None
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_pool_timeout: int = 30
+    db_pool_recycle: int = 1800
+    sql_echo: bool = False
     
     # Image Processing
-    base_image_url: str = os.getenv("BASE_IMAGE_URL", "https://valuer-image-source.com")
-    optimize_images: bool = os.getenv("OPTIMIZE_IMAGES", "True").lower() in ("true", "1", "t")
-    max_image_dimension: int = int(os.getenv("MAX_IMAGE_DIMENSION", "1200"))
-    image_processing_batch_size: int = int(os.getenv("IMAGE_PROCESSING_BATCH_SIZE", "10"))
+    base_image_url: str = "https://image.invaluable.com/housePhotos/"
+    optimize_images: bool = True
+    max_image_dimension: int = 1200
+    batch_size: int = 50
+    max_workers: int = 10
     
     # Logging
-    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    log_level: str = "INFO"
+    
+    # Cloud SQL Connection (for production)
+    instance_connection_name: Optional[str] = None
+    project_id: Optional[str] = None
+    
+    @field_validator('db_host', 'db_user', 'db_password')
+    def validate_postgres_settings(cls, v, values):
+        """Ensure PostgreSQL settings are available when needed"""
+        if values.data.get('db_type') == 'postgresql' and not v:
+            if values.data.get('env') == 'production':
+                # In production, these should be set
+                field_name = [k for k, val in values.data.items() if val == v][0]
+                raise ValueError(f"{field_name} must be set when db_type is postgresql and env is production")
+        return v
     
     class Config:
         env_file = ".env"
         case_sensitive = True
-        from_attributes = True
 
 @lru_cache()
 def get_settings() -> Settings:
