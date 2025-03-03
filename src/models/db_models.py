@@ -9,29 +9,37 @@ Base = declarative_base()
 
 class AuctionLot(Base):
     """
-    SQLAlchemy model for the auction_lots table in the database
+    SQLAlchemy model for the auction_lots table
     """
     __tablename__ = "auction_lots"
     
+    # Basic Information
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    lot_number = Column(String(100), nullable=False)
     lot_ref = Column(String(100), nullable=False, index=True, unique=True)
-    price_result = Column(Float, nullable=False)
-    original_photo_path = Column(String(500), nullable=False)
-    gcs_photo_path = Column(String(500), nullable=True)
-    date_time_local = Column(String(100), nullable=False)
-    date_time_utc_unix = Column(Integer, nullable=False, index=True)
-    currency_code = Column(String(10), nullable=False)
-    currency_symbol = Column(String(10), nullable=False)
+    lot_number = Column(String(100), nullable=False)
+    title = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    
+    # Auction Details
     house_name = Column(String(200), nullable=False, index=True)
     sale_type = Column(String(100), nullable=False)
-    lot_title = Column(Text, nullable=False)
-    object_id = Column(String(100), nullable=False, index=True)
-    highlight_result = Column(Text, nullable=True)
-    ranking_info = Column(Text, nullable=True)
+    sale_date = Column(DateTime, nullable=False, index=True)
+    
+    # Price Details
+    price_realized = Column(Float, nullable=False)
+    currency_code = Column(String(10), nullable=False)
+    currency_symbol = Column(String(10), nullable=False)
+    
+    # Image
+    photo_path = Column(String(500), nullable=False)
+    storage_path = Column(String(500), nullable=True)
+    
+    # Additional Data (stored as JSON)
+    raw_data = Column(Text, nullable=True)
+    
+    # Timestamps
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
-    processed_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     def __repr__(self):
         return f"<AuctionLot(id={self.id}, lot_ref={self.lot_ref}, house_name={self.house_name})>"

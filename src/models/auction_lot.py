@@ -23,48 +23,54 @@ class RankingInfo(BaseModel):
 class AuctionLotInput(BaseModel):
     """
     Input model for auction lot data as received from JSON
-    This represents a single hit from the JSON input
     """
-    lot_number: str = Field(..., alias="lotNumber")
-    lot_ref: str = Field(..., alias="lotRef")
-    price_result: float = Field(..., alias="priceResult")
-    photo_path: str = Field(..., alias="photoPath")
-    date_time_local: str = Field(..., alias="dateTimeLocal")
-    date_time_utc_unix: int = Field(..., alias="dateTimeUTCUnix")
-    currency_code: str = Field(..., alias="currencyCode")
-    currency_symbol: str = Field(..., alias="currencySymbol")
-    house_name: str = Field(..., alias="houseName")
-    sale_type: str = Field(..., alias="saleType")
-    lot_title: str = Field(..., alias="lotTitle")
-    object_id: str = Field(..., alias="objectID")
-    highlight_result: Optional[HighlightResult] = Field(None, alias="_highlightResult")
-    ranking_info: Optional[RankingInfo] = Field(None, alias="_rankingInfo")
+    lotNumber: str
+    lotRef: str
+    lotTitle: str
+    description: Optional[str] = None
+    
+    houseName: str
+    saleType: str
+    dateTimeLocal: str
+    dateTimeUTCUnix: int
+    
+    priceResult: float
+    currencyCode: str
+    currencySymbol: str
+    
+    photoPath: str
+    
+    # Additional fields will be captured in model.__dict__
     
     class Config:
         populate_by_name = True
+        extra = "allow"  # Allow extra fields that will be stored in the raw_data JSON
 
 class AuctionLotResponse(BaseModel):
     """
     Response model for auction lot data after processing
-    This includes GCS image path and processing metadata
     """
     id: str
-    lot_number: str
-    lot_ref: str
-    price_result: float
-    original_photo_path: str
-    gcs_photo_path: Optional[str] = None
-    date_time_local: str
-    date_time_utc_unix: int
-    currency_code: str
-    currency_symbol: str
-    house_name: str
-    sale_type: str
-    lot_title: str
-    object_id: str
-    highlight_result: Optional[Dict[str, Any]] = None
-    ranking_info: Optional[Dict[str, Any]] = None
-    processed_at: datetime.datetime
+    lotRef: str
+    lotNumber: str
+    lotTitle: str
+    description: Optional[str] = None
+    
+    houseName: str
+    saleType: str
+    saleDate: str
+    
+    priceRealized: float
+    currencyCode: str
+    currencySymbol: str
+    
+    photoPath: str
+    
+    createdAt: str
+    updatedAt: str
+    
+    # Store any additional data from the original input
+    rawData: Dict[str, Any] = Field(default_factory=dict)
     
     class Config:
         json_encoders = {

@@ -21,43 +21,46 @@ IMAGE_BASE_URL = "https://image.invaluable.com/housePhotos/"
 # Initialize GCS client if not in local development mode
 try:
     from google.cloud import storage
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(settings.gcs_bucket_name)
-    HAS_GCS = True
+    if settings.use_gcs:
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(settings.gcs_bucket)
+        HAS_GCS = True
+    else:
+        HAS_GCS = False
 except Exception as e:
     logger.warning(f"GCS initialization failed: {str(e)}. Using local storage for development.")
     HAS_GCS = False
 
-# Local storage directory for development
-LOCAL_STORAGE_DIR = 'local_storage'
-os.makedirs(LOCAL_STORAGE_DIR, exist_ok=True)
+# Create local storage directory if using local storage
+if not HAS_GCS and not os.path.exists(settings.local_storage_path):
+    os.makedirs(settings.local_storage_path, exist_ok=True)
 
 async def process_images(auction_lots: List[AuctionLotInput]) -> None:
     """
-    Process images for a list of auction lots.
-    
-    This function downloads images from their original URLs and
-    uploads them to Google Cloud Storage.
+    Process images from a list of auction lots.
     
     Args:
-        auction_lots: List of AuctionLotInput objects
+        auction_lots: List of auction lots to process
     """
-    logger.info(f"Starting image processing for {len(auction_lots)} lots")
+    logger.info(f"Processing images for {len(auction_lots)} lots")
     
-    # Process images in batches to avoid overwhelming the system
-    batch_size = settings.image_processing_batch_size
-    for i in range(0, len(auction_lots), batch_size):
-        batch = auction_lots[i:i+batch_size]
-        
-        # Create tasks for each lot in the batch
-        tasks = [process_single_image(lot) for lot in batch]
-        
-        # Execute tasks concurrently
-        await asyncio.gather(*tasks)
-        
-        logger.info(f"Processed batch {i//batch_size + 1} of images")
+    # Process images in batches to limit concurrency
+    batch_size = settings.batch_size
+    batches = [auction_lots[i:i + batch_size] for i in range(0, len(auction_lots), batch_size)]
     
-    logger.info("Completed image processing")
+    for batch_index, batch in enumerate(batches):
+        logger.info(f"Processing batch {batch_index + 1} of {len(batches)}")
+        
+        tasks = []
+        for lot in batch:
+            if lot.photoPath:
+                tasks.append(process_single_image(lot))
+        
+        # Wait for batch to complete
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+    
+    logger.info("Image processing completed")
 
 @retry(
     stop=stop_after_attempt(3),
@@ -66,226 +69,205 @@ async def process_images(auction_lots: List[AuctionLotInput]) -> None:
 )
 async def process_single_image(lot: AuctionLotInput) -> Optional[str]:
     """
-    Process a single image for an auction lot
+    Process a single image from an auction lot.
     
     Args:
-        lot: AuctionLotInput object containing image information
-        
+        lot: Auction lot to process
+    
     Returns:
-        GCS path where the image was uploaded, or None if failed
+        URL of the stored image, or None if processing failed
     """
+    if not lot.photoPath:
+        logger.warning(f"No photo path for lot {lot.lotRef}")
+        return None
+    
     try:
-        # Ensure we have a photo path
-        if not lot.photo_path:
-            logger.warning(f"No photo path for lot {lot.lot_ref}")
-            return None
-            
-        # Generate GCS path for this image
-        image_path = generate_gcs_path(lot)
-        
-        # Check if the image already exists in storage
-        if HAS_GCS:
-            blob = bucket.blob(image_path)
-            exists = blob.exists()
-        else:
-            local_path = os.path.join(LOCAL_STORAGE_DIR, image_path)
-            exists = os.path.exists(local_path)
-        
-        if exists:
-            logger.info(f"Image already exists in storage: {image_path}")
-            if HAS_GCS:
-                return f"gs://{settings.gcs_bucket_name}/{image_path}"
-            else:
-                return f"local://{LOCAL_STORAGE_DIR}/{image_path}"
-        
-        # Download the image
-        image_data = await download_image(lot.photo_path)
+        # Download image
+        image_data = await download_image(lot.photoPath)
         if not image_data:
-            logger.error(f"Failed to download image for lot {lot.lot_ref}")
+            logger.warning(f"Failed to download image for lot {lot.lotRef}")
             return None
         
-        # Optimize the image if needed
-        optimized_data = optimize_image(image_data)
-        image_data_to_upload = optimized_data if optimized_data else image_data
+        # Optimize image if configured
+        if settings.optimize_images:
+            optimized_data = optimize_image(image_data)
+            if optimized_data:
+                image_data = optimized_data
         
         # Upload to storage
         if HAS_GCS:
-            return upload_to_gcs(image_data_to_upload, image_path, lot)
+            # Generate GCS path
+            image_path = generate_gcs_path(lot)
+            return upload_to_gcs(image_data, image_path, lot)
         else:
-            return save_to_local(image_data_to_upload, image_path, lot)
-        
+            # Save to local storage
+            image_path = f"{lot.houseName}/{lot.lotRef}/{os.path.basename(lot.photoPath)}"
+            return save_to_local(image_data, image_path, lot)
+    
     except Exception as e:
-        logger.error(f"Error processing image for lot {lot.lot_ref}: {str(e)}", exc_info=True)
+        logger.error(f"Error processing image for lot {lot.lotRef}: {str(e)}")
         return None
 
 async def download_image(photo_path: str) -> Optional[bytes]:
     """
-    Download an image from the provided URL
+    Download an image from a URL.
     
     Args:
-        photo_path: Path or URL to the image
-        
-    Returns:
-        Image data as bytes or None if download failed
-    """
-    # For local testing, if URL starts with 'test:', return test image data
-    if photo_path.startswith('test:'):
-        logger.info(f"Using test image for {photo_path}")
-        # Create a simple test image
-        img = Image.new('RGB', (100, 100), color = (73, 109, 137))
-        byte_io = BytesIO()
-        img.save(byte_io, 'JPEG')
-        return byte_io.getvalue()
+        photo_path: Path to the photo
     
-    # Construct the full URL for invaluable.com images
-    if not photo_path.startswith(('http://', 'https://')):
-        url = f"{IMAGE_BASE_URL}{photo_path}"
-    else:
-        url = photo_path
-        
-    logger.info(f"Downloading image from: {url}")
-        
+    Returns:
+        Image data, or None if download failed
+    """
+    url = f"{IMAGE_BASE_URL}{photo_path}"
+    logger.info(f"Downloading image from {url}")
+    
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, timeout=30.0)
+            response = await client.get(url, timeout=30.0, follow_redirects=True)
             response.raise_for_status()
             return response.content
+    except httpx.HTTPError as e:
+        logger.error(f"HTTP error downloading image {photo_path}: {e}")
+        return None
     except Exception as e:
-        logger.error(f"Error downloading image from {url}: {str(e)}")
-        # Return test image for development purposes
-        if settings.debug:
-            logger.info("Using fallback test image in debug mode")
-            img = Image.new('RGB', (100, 100), color = (73, 109, 137))
-            byte_io = BytesIO()
-            img.save(byte_io, 'JPEG')
-            return byte_io.getvalue()
+        logger.error(f"Error downloading image {photo_path}: {e}")
         return None
 
 def optimize_image(image_data: bytes) -> Optional[bytes]:
     """
-    Optimize the image by resizing and compressing
+    Optimize an image by resizing and compressing it.
     
     Args:
-        image_data: Original image data
-        
+        image_data: Image data to optimize
+    
     Returns:
-        Optimized image data or None if optimization failed
+        Optimized image data, or None if optimization failed
     """
-    if not settings.optimize_images:
-        return None
-        
     try:
-        img = Image.open(BytesIO(image_data))
+        # Open image from bytes
+        image = Image.open(BytesIO(image_data))
         
-        # Resize if the image is larger than the max dimensions
-        max_size = settings.max_image_dimension
-        if img.width > max_size or img.height > max_size:
-            img.thumbnail((max_size, max_size), Image.LANCZOS)
+        # Resize if needed
+        max_dimension = settings.max_image_dimension
+        if max(image.width, image.height) > max_dimension:
+            # Calculate new dimensions while maintaining aspect ratio
+            if image.width > image.height:
+                new_width = max_dimension
+                new_height = int(max_dimension * image.height / image.width)
+            else:
+                new_height = max_dimension
+                new_width = int(max_dimension * image.width / image.height)
+            
+            # Resize image
+            image = image.resize((new_width, new_height), Image.LANCZOS)
         
-        # Save with optimized settings
+        # Save optimized image to bytes
         output = BytesIO()
         
-        if img.format == 'JPEG' or img.mode == 'RGB':
-            img.save(output, format='JPEG', quality=85, optimize=True)
-        elif img.format == 'PNG':
-            img.save(output, format='PNG', optimize=True)
+        # Save with appropriate format and quality
+        if image.format == "JPEG" or not image.format:
+            image.save(output, format="JPEG", quality=85, optimize=True)
+        elif image.format == "PNG":
+            image.save(output, format="PNG", optimize=True)
         else:
             # For other formats, convert to JPEG
-            if img.mode == 'RGBA':
-                # Convert RGBA to RGB by adding white background
-                background = Image.new('RGB', img.size, (255, 255, 255))
-                background.paste(img, mask=img.split()[3])
-                background.save(output, format='JPEG', quality=85, optimize=True)
+            if image.mode == "RGBA":
+                # Convert RGBA to RGB for JPEG format
+                background = Image.new("RGB", image.size, (255, 255, 255))
+                background.paste(image, mask=image.split()[3])  # Use alpha channel as mask
+                background.save(output, format="JPEG", quality=85, optimize=True)
             else:
-                img.convert('RGB').save(output, format='JPEG', quality=85, optimize=True)
+                image.convert("RGB").save(output, format="JPEG", quality=85, optimize=True)
         
+        # Get bytes from output
+        output.seek(0)
         return output.getvalue()
     except Exception as e:
-        logger.error(f"Error optimizing image: {str(e)}")
+        logger.error(f"Error optimizing image: {e}")
         return None
 
 def generate_gcs_path(lot: AuctionLotInput) -> str:
     """
-    Generate a GCS path for the image based on lot attributes
+    Generate a GCS path for an image.
     
     Args:
-        lot: The auction lot
-        
+        lot: Auction lot
+    
     Returns:
-        GCS path string
+        GCS path for the image
     """
-    # Create a clean house name for the folder structure
-    house_folder = lot.house_name.lower().replace(' ', '_').replace('/', '_')
+    # Clean house name for use in path
+    house_name = lot.houseName.lower().replace(" ", "_")
     
-    # Get the original filename from the photo path
-    original_filename = os.path.basename(lot.photo_path)
+    # Get filename from path
+    filename = os.path.basename(lot.photoPath)
     
-    # Return the full GCS path
-    return f"{house_folder}/{lot.lot_ref}/{original_filename}"
+    # Structure: {house_name}/{lot_ref}/{filename}
+    return f"{house_name}/{lot.lotRef}/{filename}"
 
 def upload_to_gcs(image_data: bytes, image_path: str, lot: AuctionLotInput) -> str:
     """
-    Upload an image to Google Cloud Storage
+    Upload an image to Google Cloud Storage.
     
     Args:
         image_data: Image data to upload
-        image_path: GCS path for the image
-        lot: The auction lot for metadata
-        
+        image_path: Path to store the image in GCS
+        lot: Auction lot
+    
     Returns:
-        GCS URI of the uploaded image
+        URL of the uploaded image
     """
     try:
-        # Create a blob and upload the image
         blob = bucket.blob(image_path)
         
-        # Set metadata for the image
+        # Set metadata
         metadata = {
-            'original_path': lot.photo_path,
-            'lot_ref': lot.lot_ref,
-            'house_name': lot.house_name
+            "original_url": lot.photoPath,
+            "lot_ref": lot.lotRef,
+            "house_name": lot.houseName,
         }
         blob.metadata = metadata
         
-        # Upload the image
+        # Upload
         blob.upload_from_string(
             image_data,
-            content_type='image/jpeg'  # Assuming most images are JPEG
+            content_type=f"image/{os.path.splitext(image_path)[1][1:].lower() or 'jpeg'}"
         )
         
-        logger.info(f"Successfully uploaded image to GCS: {image_path}")
+        # Make publicly accessible
+        blob.make_public()
         
-        # Return the GCS URI
-        return f"gs://{settings.gcs_bucket_name}/{image_path}"
+        logger.info(f"Uploaded image to GCS: {image_path}")
+        return blob.public_url
+    
     except Exception as e:
-        logger.error(f"Error uploading image to GCS: {str(e)}", exc_info=True)
-        return ""
+        logger.error(f"Error uploading to GCS: {e}")
+        return None
 
 def save_to_local(image_data: bytes, image_path: str, lot: AuctionLotInput) -> str:
     """
-    Save an image to local storage for development
+    Save an image to local storage.
     
     Args:
         image_data: Image data to save
-        image_path: Path for the image within local storage
-        lot: The auction lot for metadata
-        
+        image_path: Path to store the image locally
+        lot: Auction lot
+    
     Returns:
-        Local path of the saved image
+        Path to the saved image
     """
     try:
         # Create full path including directories
-        full_path = os.path.join(LOCAL_STORAGE_DIR, image_path)
+        full_path = os.path.join(settings.local_storage_path, image_path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         
-        # Write the file
-        with open(full_path, 'wb') as f:
+        # Save file
+        with open(full_path, "wb") as f:
             f.write(image_data)
         
-        logger.info(f"Successfully saved image locally: {full_path}")
-        
-        # Return the local URI
-        return f"local://{full_path}"
+        logger.info(f"Saved image locally: {full_path}")
+        return full_path
+    
     except Exception as e:
-        logger.error(f"Error saving image locally: {str(e)}", exc_info=True)
-        return "" 
+        logger.error(f"Error saving image locally: {e}")
+        return None 

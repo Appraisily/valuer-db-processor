@@ -16,12 +16,29 @@ from src.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# Determine the database URL based on configuration
+if settings.db_type == "sqlite":
+    db_url = f"sqlite+aiosqlite:///{settings.db_name}"
+    is_sqlite = True
+elif settings.db_type == "postgresql":
+    if settings.env == "production" and settings.instance_connection_name:
+        # Cloud SQL with unix socket
+        db_url = f"postgresql+asyncpg://{settings.db_user}:{settings.db_password}@/{settings.db_name}?host={settings.db_host}"
+    else:
+        # Regular PostgreSQL connection
+        db_url = f"postgresql+asyncpg://{settings.db_user}:{settings.db_password}@{settings.db_host}/{settings.db_name}"
+    is_sqlite = False
+else:
+    raise ValueError(f"Unsupported database type: {settings.db_type}")
+
+logger.info(f"Using database: {settings.db_type}")
+
 # Create async database engine
 engine = create_async_engine(
-    settings.database_url,
+    db_url,
     echo=settings.sql_echo,
-    # These settings don't apply to SQLite, so only use them if not using SQLite
-    **({} if 'sqlite' in settings.database_url else {
+    # These settings don't apply to SQLite
+    **({} if is_sqlite else {
         'pool_size': settings.db_pool_size,
         'max_overflow': settings.db_max_overflow,
         'pool_timeout': settings.db_pool_timeout,
@@ -29,243 +46,221 @@ engine = create_async_engine(
     })
 )
 
-# Create async session factory
-async_session = sessionmaker(
-    engine, 
-    class_=AsyncSession, 
+# Create sessionmaker
+AsyncSessionLocal = sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
     expire_on_commit=False
 )
 
 async def init_db():
-    """Initialize the database tables"""
+    """Initialize database by creating all tables"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        logger.info("Database tables created")
+    logger.info("Database initialized")
 
 async def store_auction_data(auction_lots: List[AuctionLotInput]) -> List[AuctionLotResponse]:
     """
     Store auction data in the database
     
     Args:
-        auction_lots: List of AuctionLotInput objects
-        
+        auction_lots: List of auction lots to store
+    
     Returns:
-        List of AuctionLotResponse objects
+        List of created/updated auction lots
     """
     logger.info(f"Storing {len(auction_lots)} auction lots in database")
-    stored_lots = []
     
-    # Initialize database for local development if using SQLite
-    if 'sqlite' in settings.database_url:
-        await init_db()
+    results = []
     
-    async with async_session() as session:
+    # Create a session
+    async with AsyncSessionLocal() as session:
         async with session.begin():
-            for lot in auction_lots:
+            for lot_input in auction_lots:
                 try:
-                    # Check if this lot already exists
-                    existing_lot = await get_lot_by_ref(session, lot.lot_ref)
+                    # Check if lot already exists
+                    existing_lot = await get_lot_by_ref(session, lot_input.lotRef)
                     
                     if existing_lot:
                         # Update existing lot
-                        stored_lot = await update_lot(session, existing_lot, lot)
+                        result = await update_lot(session, existing_lot, lot_input)
+                        if result:
+                            results.append(result)
                     else:
                         # Create new lot
-                        stored_lot = await create_lot(session, lot)
-                        
-                    if stored_lot:
-                        stored_lots.append(stored_lot)
-                        
+                        result = await create_lot(session, lot_input)
+                        if result:
+                            results.append(result)
+                
                 except Exception as e:
-                    logger.error(f"Error storing auction lot {lot.lot_ref}: {str(e)}", exc_info=True)
+                    logger.error(f"Error processing lot {lot_input.lotRef}: {str(e)}")
+                    # Continue with next lot
+                    continue
     
-    logger.info(f"Successfully stored {len(stored_lots)} auction lots")
-    return stored_lots
+    logger.info(f"Successfully stored {len(results)} auction lots")
+    return results
 
 async def get_lot_by_ref(session: AsyncSession, lot_ref: str) -> Optional[AuctionLot]:
     """
-    Get an auction lot by its lot_ref
+    Get a lot by its reference
     
     Args:
         session: Database session
-        lot_ref: Lot reference ID
-        
+        lot_ref: Lot reference
+    
     Returns:
-        AuctionLot object or None if not found
+        Auction lot or None if not found
     """
-    query = select(AuctionLot).where(AuctionLot.lot_ref == lot_ref)
-    result = await session.execute(query)
-    return result.scalars().first()
+    stmt = select(AuctionLot).where(AuctionLot.lot_ref == lot_ref)
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
 
 async def create_lot(session: AsyncSession, lot_input: AuctionLotInput) -> Optional[AuctionLotResponse]:
     """
-    Create a new auction lot in the database
+    Create a new auction lot
     
     Args:
         session: Database session
-        lot_input: AuctionLotInput object
-        
+        lot_input: Auction lot input
+    
     Returns:
-        AuctionLotResponse object or None if creation failed
+        Created auction lot response or None if failed
     """
     try:
-        # Convert highlight result and ranking info to dict if needed
-        highlight_result = lot_input.highlight_result.dict() if lot_input.highlight_result else None
-        ranking_info = lot_input.ranking_info.dict() if lot_input.ranking_info else None
-        
-        # Create DB model from input model
-        lot_db = AuctionLot(
+        # Create new lot
+        new_lot = AuctionLot(
+            # Basic info
             id=str(uuid.uuid4()),
-            lot_number=lot_input.lot_number,
-            lot_ref=lot_input.lot_ref,
-            price_result=lot_input.price_result,
-            original_photo_path=lot_input.photo_path,
-            date_time_local=lot_input.date_time_local,
-            date_time_utc_unix=lot_input.date_time_utc_unix,
-            currency_code=lot_input.currency_code,
-            currency_symbol=lot_input.currency_symbol,
-            house_name=lot_input.house_name,
-            sale_type=lot_input.sale_type,
-            lot_title=lot_input.lot_title,
-            object_id=lot_input.object_id,
-            processed_at=datetime.datetime.utcnow()
+            lot_ref=lot_input.lotRef,
+            lot_number=lot_input.lotNumber,
+            title=lot_input.lotTitle,
+            description=lot_input.description if hasattr(lot_input, 'description') else None,
+            
+            # Auction details
+            house_name=lot_input.houseName,
+            sale_type=lot_input.saleType,
+            sale_date=datetime.datetime.fromtimestamp(lot_input.dateTimeUTCUnix),
+            
+            # Price details
+            price_realized=lot_input.priceResult,
+            currency_code=lot_input.currencyCode,
+            currency_symbol=lot_input.currencySymbol,
+            
+            # Image
+            photo_path=lot_input.photoPath,
+            
+            # Timestamps
+            created_at=datetime.datetime.utcnow(),
+            updated_at=datetime.datetime.utcnow(),
+            
+            # Store additional data in JSON field
+            raw_data=json.dumps({
+                key: value for key, value in lot_input.dict().items()
+                if key not in [
+                    'lotRef', 'lotNumber', 'lotTitle', 'description',
+                    'houseName', 'saleType', 'dateTimeUTCUnix',
+                    'priceResult', 'currencyCode', 'currencySymbol',
+                    'photoPath'
+                ]
+            })
         )
         
-        # Handle JSON fields based on database type
-        if 'sqlite' in settings.database_url:
-            # For SQLite, serialize to JSON string
-            if highlight_result:
-                lot_db.highlight_result = json.dumps(highlight_result)
-            if ranking_info:
-                lot_db.ranking_info = json.dumps(ranking_info)
-        else:
-            # For PostgreSQL, assign directly
-            lot_db.highlight_result = highlight_result
-            lot_db.ranking_info = ranking_info
-        
         # Add to session
-        session.add(lot_db)
-        await session.flush()
+        session.add(new_lot)
         
-        # Create response object
-        return create_response_from_db(lot_db)
-        
-    except IntegrityError as e:
-        logger.error(f"Integrity error creating auction lot {lot_input.lot_ref}: {str(e)}")
-        await session.rollback()
-        return None
+        # Return response
+        logger.info(f"Created new lot: {new_lot.lot_ref}")
+        return create_response_from_db(new_lot)
+    
     except Exception as e:
-        logger.error(f"Error creating auction lot {lot_input.lot_ref}: {str(e)}", exc_info=True)
-        await session.rollback()
+        logger.error(f"Error creating lot: {str(e)}")
         return None
 
 async def update_lot(session: AsyncSession, existing_lot: AuctionLot, lot_input: AuctionLotInput) -> Optional[AuctionLotResponse]:
     """
-    Update an existing auction lot in the database
+    Update an existing auction lot
     
     Args:
         session: Database session
-        existing_lot: Existing AuctionLot database model
-        lot_input: New AuctionLotInput data
-        
+        existing_lot: Existing auction lot
+        lot_input: New auction lot data
+    
     Returns:
-        AuctionLotResponse object or None if update failed
+        Updated auction lot response or None if failed
     """
     try:
-        # Convert highlight result and ranking info to dict if needed
-        highlight_result = lot_input.highlight_result.dict() if lot_input.highlight_result else None
-        ranking_info = lot_input.ranking_info.dict() if lot_input.ranking_info else None
+        # Update fields
+        existing_lot.lot_number = lot_input.lotNumber
+        existing_lot.title = lot_input.lotTitle
+        existing_lot.description = lot_input.description if hasattr(lot_input, 'description') else existing_lot.description
         
-        # Update basic fields
-        existing_lot.lot_number = lot_input.lot_number
-        existing_lot.price_result = lot_input.price_result
-        existing_lot.original_photo_path = lot_input.photo_path
-        existing_lot.date_time_local = lot_input.date_time_local
-        existing_lot.date_time_utc_unix = lot_input.date_time_utc_unix
-        existing_lot.currency_code = lot_input.currency_code
-        existing_lot.currency_symbol = lot_input.currency_symbol
-        existing_lot.house_name = lot_input.house_name
-        existing_lot.sale_type = lot_input.sale_type
-        existing_lot.lot_title = lot_input.lot_title
-        existing_lot.object_id = lot_input.object_id
-        existing_lot.processed_at = datetime.datetime.utcnow()
+        existing_lot.house_name = lot_input.houseName
+        existing_lot.sale_type = lot_input.saleType
+        existing_lot.sale_date = datetime.datetime.fromtimestamp(lot_input.dateTimeUTCUnix)
         
-        # Handle JSON fields based on database type
-        if 'sqlite' in settings.database_url:
-            # For SQLite, serialize to JSON string
-            if highlight_result:
-                existing_lot.highlight_result = json.dumps(highlight_result)
-            else:
-                existing_lot.highlight_result = None
-                
-            if ranking_info:
-                existing_lot.ranking_info = json.dumps(ranking_info)
-            else:
-                existing_lot.ranking_info = None
-        else:
-            # For PostgreSQL, assign directly
-            existing_lot.highlight_result = highlight_result
-            existing_lot.ranking_info = ranking_info
+        existing_lot.price_realized = lot_input.priceResult
+        existing_lot.currency_code = lot_input.currencyCode
+        existing_lot.currency_symbol = lot_input.currencySymbol
         
-        # No need to add to session as it's already tracked
-        await session.flush()
+        existing_lot.photo_path = lot_input.photoPath
         
-        # Create response object
+        existing_lot.updated_at = datetime.datetime.utcnow()
+        
+        # Update raw data
+        existing_raw_data = json.loads(existing_lot.raw_data) if existing_lot.raw_data else {}
+        new_raw_data = {
+            key: value for key, value in lot_input.dict().items()
+            if key not in [
+                'lotRef', 'lotNumber', 'lotTitle', 'description',
+                'houseName', 'saleType', 'dateTimeUTCUnix',
+                'priceResult', 'currencyCode', 'currencySymbol',
+                'photoPath'
+            ]
+        }
+        
+        # Merge old and new data, with new data taking precedence
+        merged_data = {**existing_raw_data, **new_raw_data}
+        existing_lot.raw_data = json.dumps(merged_data)
+        
+        # No need to add to session since it's already tracked
+        
+        # Return response
+        logger.info(f"Updated existing lot: {existing_lot.lot_ref}")
         return create_response_from_db(existing_lot)
-        
+    
     except Exception as e:
-        logger.error(f"Error updating auction lot {lot_input.lot_ref}: {str(e)}", exc_info=True)
-        await session.rollback()
+        logger.error(f"Error updating lot: {str(e)}")
         return None
 
 def create_response_from_db(lot_db: AuctionLot) -> AuctionLotResponse:
     """
-    Create an AuctionLotResponse from a database model
+    Create a response object from a database object
     
     Args:
-        lot_db: AuctionLot database model
-        
+        lot_db: Database auction lot
+    
     Returns:
-        AuctionLotResponse object
+        Auction lot response
     """
-    # Handle JSON fields based on database type
-    highlight_result = None
-    ranking_info = None
-    
-    if 'sqlite' in settings.database_url:
-        # For SQLite, deserialize JSON string
-        if lot_db.highlight_result:
-            try:
-                highlight_result = json.loads(lot_db.highlight_result)
-            except:
-                highlight_result = None
-                
-        if lot_db.ranking_info:
-            try:
-                ranking_info = json.loads(lot_db.ranking_info)
-            except:
-                ranking_info = None
-    else:
-        # For PostgreSQL, use directly
-        highlight_result = lot_db.highlight_result
-        ranking_info = lot_db.ranking_info
-    
     return AuctionLotResponse(
         id=lot_db.id,
-        lot_number=lot_db.lot_number,
-        lot_ref=lot_db.lot_ref,
-        price_result=lot_db.price_result,
-        original_photo_path=lot_db.original_photo_path,
-        gcs_photo_path=lot_db.gcs_photo_path,
-        date_time_local=lot_db.date_time_local,
-        date_time_utc_unix=lot_db.date_time_utc_unix,
-        currency_code=lot_db.currency_code,
-        currency_symbol=lot_db.currency_symbol,
-        house_name=lot_db.house_name,
-        sale_type=lot_db.sale_type,
-        lot_title=lot_db.lot_title,
-        object_id=lot_db.object_id,
-        highlight_result=highlight_result,
-        ranking_info=ranking_info,
-        processed_at=lot_db.processed_at
+        lotRef=lot_db.lot_ref,
+        lotNumber=lot_db.lot_number,
+        lotTitle=lot_db.title,
+        description=lot_db.description,
+        
+        houseName=lot_db.house_name,
+        saleType=lot_db.sale_type,
+        saleDate=lot_db.sale_date.isoformat(),
+        
+        priceRealized=lot_db.price_realized,
+        currencyCode=lot_db.currency_code,
+        currencySymbol=lot_db.currency_symbol,
+        
+        photoPath=lot_db.photo_path,
+        
+        createdAt=lot_db.created_at.isoformat(),
+        updatedAt=lot_db.updated_at.isoformat(),
+        
+        rawData=json.loads(lot_db.raw_data) if lot_db.raw_data else {}
     ) 
