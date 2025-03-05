@@ -104,8 +104,13 @@ async def process_data(request: ProcessRequest, background_tasks: BackgroundTask
             logger.warning("No auction lots found in the data")
             return []
         
-        # Process images in the background to allow for faster response
-        background_tasks.add_task(process_images, auction_lots)
+        # Process images to get storage paths
+        storage_paths = await process_images(auction_lots)
+        
+        # Assign storage paths to auction lots before storing in database
+        for lot in auction_lots:
+            if lot.lotRef in storage_paths:
+                setattr(lot, 'storagePath', storage_paths[lot.lotRef])
         
         # Store the auction data in the database
         stored_lots = await store_auction_data(auction_lots)
@@ -139,4 +144,4 @@ async def get_metrics():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("src.main:app", host="0.0.0.0", port=8080, reload=settings.debug) 
+    uvicorn.run("src.main:app", host="0.0.0.0", port=8080, reload=settings.debug)

@@ -24,12 +24,12 @@ class Settings(BaseSettings):
     
     # Storage
     use_gcs: bool = False
-    gcs_bucket: str = "valuer-auction-images"
+    gcs_bucket_name: str = "valuer-auction-images"
     local_storage_path: str = "./local_images"
     
     # Database
     db_type: Literal["sqlite", "postgresql"] = "sqlite"
-    db_name: str = "./local_data/valuer.db"
+    database_url: str = "sqlite:///./local_data/valuer.db"
     db_host: Optional[str] = None
     db_user: Optional[str] = None
     db_password: Optional[str] = None
@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     base_image_url: str = "https://image.invaluable.com/housePhotos/"
     optimize_images: bool = True
     max_image_dimension: int = 1200
-    batch_size: int = 50
+    image_processing_batch_size: int = 50
     max_workers: int = 10
     
     # Logging
@@ -56,16 +56,21 @@ class Settings(BaseSettings):
     @field_validator('db_host', 'db_user', 'db_password')
     def validate_postgres_settings(cls, v, values):
         """Ensure PostgreSQL settings are available when needed"""
-        if values.data.get('db_type') == 'postgresql' and not v:
-            if values.data.get('env') == 'production':
+        if 'db_type' in values.data and values.data.get('db_type') == 'postgresql' and not v:
+            if 'env' in values.data and values.data.get('env') == 'production':
                 # In production, these should be set
                 field_name = [k for k, val in values.data.items() if val == v][0]
                 raise ValueError(f"{field_name} must be set when db_type is postgresql and env is production")
         return v
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    # Update this to use the new Pydantic V2 format for model configuration
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": False,
+        "extra": "allow",  # This allows extra fields from environment variables
+        "env_nested_delimiter": "__",
+        "populate_by_name": True
+    }
 
 @lru_cache()
 def get_settings() -> Settings:
