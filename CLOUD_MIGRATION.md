@@ -39,39 +39,43 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your-service-account-key.json"
 
 ### 3. Create Cloud Storage Bucket
 
-If you haven't already created a storage bucket for your images:
+The storage bucket has been created with:
 
 ```bash
-# Using the Google Cloud CLI (gcloud)
-gcloud storage buckets create gs://YOUR_BUCKET_NAME --location=YOUR_LOCATION
+gcloud storage buckets create gs://valuer-auction-images \
+    --location=us-central1 \
+    --default-storage-class=STANDARD \
+    --uniform-bucket-level-access
 ```
 
 ### 4. Create Cloud SQL Instance
 
-If you haven't already created a Cloud SQL instance:
+The Cloud SQL instance has been created with:
 
 ```bash
-# Using the Google Cloud CLI (gcloud)
-gcloud sql instances create YOUR_INSTANCE_NAME \
-    --database-version=POSTGRES_13 \
-    --cpu=1 \
-    --memory=3840MB \
-    --region=YOUR_REGION
+gcloud sql instances create valuer-db \
+    --tier=db-f1-micro \
+    --region=us-central1 \
+    --database-version=POSTGRES_14 \
+    --storage-type=SSD \
+    --storage-size=10GB \
+    --availability-type=zonal \
+    --root-password='R8x!vK$3zPq@T5dM'
 ```
 
-Create a database and user:
+Database and user have been created:
 
 ```bash
-gcloud sql databases create valuer_db --instance=YOUR_INSTANCE_NAME
-gcloud sql users create valuer_user --instance=YOUR_INSTANCE_NAME --password=YOUR_PASSWORD
+gcloud sql databases create valuer_auctions --instance=valuer-db
+gcloud sql users create valuer_app --instance=valuer-db --password='Crimson-Eagle$74-Mint!Ocean'
 ```
 
 ### 5. Run the Upload Script
 
 ```bash
 python upload_to_cloud.py \
-    --gcs-bucket "YOUR_BUCKET_NAME" \
-    --cloud-sql "postgresql://valuer_user:YOUR_PASSWORD@/valuer_db?host=/cloudsql/YOUR_PROJECT_ID:YOUR_REGION:YOUR_INSTANCE_NAME" \
+    --gcs-bucket "valuer-auction-images" \
+    --cloud-sql "postgresql://valuer_app:Crimson-Eagle$74-Mint!Ocean@34.46.97.212/valuer_auctions" \
     --local-db "./local_data/valuer.db" \
     --batch-size 10
 ```
@@ -82,12 +86,12 @@ For connecting to Cloud SQL from a local environment, you may need to use the Cl
 # Download and run the Cloud SQL Auth Proxy
 wget https://dl.google.com/cloudsql/cloud_sql_proxy_x64.linux -O cloud_sql_proxy
 chmod +x cloud_sql_proxy
-./cloud_sql_proxy -instances=YOUR_PROJECT_ID:YOUR_REGION:YOUR_INSTANCE_NAME=tcp:5432
+./cloud_sql_proxy -instances=civil-forge-403609:us-central1:valuer-db=tcp:5432
 
 # In another terminal, run the upload script with a standard PostgreSQL connection string:
 python upload_to_cloud.py \
-    --gcs-bucket "YOUR_BUCKET_NAME" \
-    --cloud-sql "postgresql://valuer_user:YOUR_PASSWORD@localhost:5432/valuer_db" \
+    --gcs-bucket "valuer-auction-images" \
+    --cloud-sql "postgresql://valuer_app:Crimson-Eagle$74-Mint!Ocean@localhost:5432/valuer_auctions" \
     --local-db "./local_data/valuer.db" \
     --batch-size 10
 ```
@@ -164,26 +168,26 @@ For a production deployment on Cloud Run:
 ```
 # Database
 DB_TYPE=postgresql
-DATABASE_URL=postgresql://valuer_user:YOUR_PASSWORD@/valuer_db?host=/cloudsql/YOUR_PROJECT_ID:YOUR_REGION:YOUR_INSTANCE_NAME
+DATABASE_URL=postgresql://valuer_app:Crimson-Eagle$74-Mint!Ocean@/valuer_auctions?host=/cloudsql/civil-forge-403609:us-central1:valuer-db
 
 # Storage
 USE_GCS=true
-GCS_BUCKET_NAME=YOUR_BUCKET_NAME
+GCS_BUCKET_NAME=valuer-auction-images
 
 # Cloud SQL Connection
-INSTANCE_CONNECTION_NAME=YOUR_PROJECT_ID:YOUR_REGION:YOUR_INSTANCE_NAME
-PROJECT_ID=YOUR_PROJECT_ID
+INSTANCE_CONNECTION_NAME=civil-forge-403609:us-central1:valuer-db
+PROJECT_ID=civil-forge-403609
 ```
 
-2. Update your Dockerfile to include the Cloud SQL Auth Proxy
+2. The Dockerfile already includes the necessary configuration for Cloud SQL Auth Proxy
 
 3. Deploy to Cloud Run with the instance connection name:
 
 ```bash
 gcloud run deploy valuer-db-processor \
-  --image gcr.io/YOUR_PROJECT_ID/valuer-db-processor \
+  --image gcr.io/civil-forge-403609/valuer-db-processor \
   --platform managed \
-  --region YOUR_REGION \
-  --add-cloudsql-instances YOUR_PROJECT_ID:YOUR_REGION:YOUR_INSTANCE_NAME \
-  --update-env-vars DB_TYPE=postgresql,USE_GCS=true,GCS_BUCKET_NAME=YOUR_BUCKET_NAME,INSTANCE_CONNECTION_NAME=YOUR_PROJECT_ID:YOUR_REGION:YOUR_INSTANCE_NAME
+  --region us-central1 \
+  --add-cloudsql-instances civil-forge-403609:us-central1:valuer-db \
+  --update-env-vars DB_TYPE=postgresql,USE_GCS=true,GCS_BUCKET_NAME=valuer-auction-images,INSTANCE_CONNECTION_NAME=civil-forge-403609:us-central1:valuer-db
 ```

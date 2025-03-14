@@ -1,0 +1,209 @@
+# Valuer DB Processor
+
+A service for processing auction data, downloading images, and storing structured data in a database.
+
+## Overview
+
+This service:
+- Processes JSON files containing auction data
+- Extracts and downloads images referenced in the data
+- Uploads images to Google Cloud Storage (or stores locally for development)
+- Stores structured auction data in a database (PostgreSQL in production, SQLite for development)
+- Provides a RESTful API for data submission and processing status
+
+## Technology Stack
+
+- Python 3.10+
+- FastAPI for API endpoints
+- AsyncIO for asynchronous processing
+- PostgreSQL (production) and SQLite (development) for data storage
+- Google Cloud Storage for image storage
+- Docker for containerization
+- Deployed on Google Cloud Run
+
+## Project Structure
+
+```
+/
+├── src/                     # Source code
+│   ├── main.py              # Entry point
+│   ├── config.py            # Configuration handling
+│   ├── models/              # Data models
+│   │   ├── auction_lot.py   # Pydantic models for the data
+│   │   └── db_models.py     # Database models
+│   ├── services/            # Business logic
+│   │   ├── parser.py        # JSON parsing logic
+│   │   ├── image_service.py # Image handling logic
+│   │   └── db_service.py    # Database operations
+│   └── utils/               # Utility functions
+│       ├── logging.py       # Logging utilities
+│       └── errors.py        # Error handling utilities
+├── tests/                   # Test cases
+├── Dockerfile               # Container definition for local deployment
+├── Dockerfile.cloud         # Container definition for Cloud Run deployment
+├── requirements.txt         # Python dependencies
+├── test_app.py              # Testing script
+├── process_first_five.py    # Script to process first 5 auction items
+├── create_tables.py         # Script to create database tables
+├── setup_cloud.py           # Script to set up GCP resources
+└── README.md                # Project documentation
+```
+
+## Getting Started
+
+### Quick Start: Processing the First 5 Items
+
+For quick testing with a small dataset:
+
+1. Set up the environment
+   ```bash
+   # Create virtual environment
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   # or
+   venv\Scripts\activate     # Windows
+   
+   # Install dependencies
+   pip install -r requirements.txt
+   ```
+
+2. Create the database tables:
+   ```bash
+   python create_tables.py
+   ```
+
+3. Process the first 5 items from the example JSON:
+   ```bash
+   python process_first_five.py
+   ```
+
+This processes the first 5 items from the example JSON file, downloads the images, and stores data in a local SQLite database.
+
+For more options:
+```bash
+python process_first_five.py --help
+```
+
+### Local Development
+
+1. Clone the repository
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/valuer-db-processor.git
+   cd valuer-db-processor
+   ```
+
+2. Set up virtual environment
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   # or
+   venv\Scripts\activate     # Windows
+   ```
+
+3. Install dependencies
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Create and configure environment variables
+   ```bash
+   cp .env.example .env
+   # Edit .env file with your local configuration
+   ```
+
+5. Run the application
+   ```bash
+   uvicorn src.main:app --reload
+   ```
+
+6. Test with the test script
+   ```bash
+   python test_app.py
+   ```
+
+### Other Helpful Scripts
+
+```bash
+# Process all data in the example JSON
+python run_processor.py
+
+# Download images only
+python download_images.py
+
+# Upload local data to Google Cloud
+python upload_to_cloud.py --gcs-bucket "your-bucket-name" --cloud-sql "your-connection-string"
+```
+
+## Deployment to Google Cloud Run
+
+### 1. Set Up Cloud Resources
+
+Run the setup script to create necessary GCP resources:
+
+```bash
+python setup_cloud.py --project-id "your-project-id" --bucket-name "valuer-auction-images" --instance-name "valuer-db"
+```
+
+### 2. Build and Deploy Container
+
+```bash
+# Build the container
+gcloud builds submit --tag gcr.io/your-project-id/valuer-db-processor
+
+# Deploy to Cloud Run
+gcloud run deploy valuer-db-processor \
+  --image gcr.io/your-project-id/valuer-db-processor \
+  --platform managed \
+  --region us-central1 \
+  --set-env-vars="ENV=production,USE_GCS=true,GCS_BUCKET_NAME=valuer-auction-images,DB_TYPE=postgresql,INSTANCE_CONNECTION_NAME=your-project-id:us-central1:valuer-db" \
+  --add-cloudsql-instances your-project-id:us-central1:valuer-db
+```
+
+For detailed deployment instructions, see:
+- [CLOUD_RUN_SETUP.md](CLOUD_RUN_SETUP.md) - Complete Cloud Run setup guide
+- [CLOUD_MIGRATION.md](CLOUD_MIGRATION.md) - Migrating data to the cloud
+- [gcp-setup-commands.md](gcp-setup-commands.md) - GCP command reference
+
+## API Endpoints
+
+- `GET /health`: Health check endpoint
+- `POST /process`: Submit auction data for processing
+- `POST /process-first-five`: Process the first 5 items from example data
+
+## Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| ENV | Environment (development/production) | production |
+| GCS_BUCKET_NAME | Google Cloud Storage bucket name | valuer-auction-images |
+| USE_GCS | Whether to use GCS or local storage | true |
+| DB_HOST | Database host | /cloudsql/project:region:instance |
+| DB_NAME | Database name | valuer_auctions |
+| DB_USER | Database username | valuer_app |
+| DB_PASSWORD | Database password | (via Secret Manager) |
+| DB_TYPE | Database type | postgresql |
+| LOG_LEVEL | Logging level | INFO |
+| BASE_IMAGE_URL | Base URL for image downloads | https://image.invaluable.com/housePhotos/ |
+| MAX_WORKERS | Maximum number of worker threads | 10 |
+| IMAGE_PROCESSING_BATCH_SIZE | Batch size for processing | 50 |
+| INSTANCE_CONNECTION_NAME | Cloud SQL instance connection name | project-id:region:instance-name |
+| PROJECT_ID | GCP project ID | your-project-id |
+
+## Documentation
+
+- [LOCAL_TESTING.md](LOCAL_TESTING.md) - Guide for local testing
+- [FIRST_FIVE_GUIDE.md](FIRST_FIVE_GUIDE.md) - Guide for processing the first 5 items
+- [CLOUD_RUN_SETUP.md](CLOUD_RUN_SETUP.md) - Detailed Cloud Run setup guide
+- [CLOUD_MIGRATION.md](CLOUD_MIGRATION.md) - Guide for migrating data to the cloud
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
