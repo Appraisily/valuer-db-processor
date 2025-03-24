@@ -1,9 +1,14 @@
-# Valuer DB Processor
+# Valuer Auction Database Processor
 
+<<<<<<< HEAD
 A robust service for processing auction lot data, handling image downloads with advanced fallback strategies, and storing structured auction information in a database.
+=======
+This project processes auction data from JSON files, creates images for each auction lot, and stores everything in a local database. It's designed to be a first step before uploading to Google Cloud.
+>>>>>>> 2296ae64bae38ecfae3e327a8294e1749682a204
 
-## Overview
+## Features
 
+<<<<<<< HEAD
 This service:
 - Processes JSON files containing auction data from various auction houses
 - Extracts and downloads images referenced in the data using multiple fallback approaches:
@@ -18,57 +23,73 @@ This service:
 - Provides RESTful API endpoints for data submission and processing status
 - Handles batch processing with configurable concurrency limits
 - Implements comprehensive error handling and logging
+=======
+- Parse auction data from JSON files
+- Create placeholder images for auction lots
+- Store data in a local SQLite database
+- Process a configurable number of items (default: 5)
+>>>>>>> 2296ae64bae38ecfae3e327a8294e1749682a204
 
-## Technology Stack
+## Getting Started
+
+### Prerequisites
 
 - Python 3.10+
-- FastAPI for API endpoints
-- AsyncIO for asynchronous processing
-- PostgreSQL (production) and SQLite (development) for data storage
-- Google Cloud Storage for image storage
-- Docker for containerization
-- Deployed on Google Cloud Run
+- Required Python packages (install via `pip install -r requirements.txt`):
+  - pydantic
+  - pydantic-settings
+  - sqlalchemy
+  - aiosqlite
+  - httpx
+  - pillow
+  - python-dotenv
+  - tenacity
+
+### Installation
+
+1. Clone the repository
+2. Install the required packages:
+   ```
+   pip install -r requirements.txt
+   ```
+3. Create a `.env` file with the necessary configuration (see `.env.example`)
+
+### Usage
+
+To process the first 5 items from the example JSON file:
+
+```bash
+python process_first_five.py
+```
+
+Command-line options:
+- `--limit N`: Process only the first N items (default: 5)
+- `--file PATH`: Path to the JSON file to process (default: example_json.json)
+- `--output DIR`: Output directory for the database (default: local_data)
+- `--image-dir DIR`: Directory for image storage (default: local_images)
+
+Example:
+```bash
+python process_first_five.py --limit 10 --file my_data.json --output my_data --image-dir my_images
+```
 
 ## Project Structure
 
-```
-/
-├── src/                     # Source code
-│   ├── main.py              # Entry point
-│   ├── config.py            # Configuration handling
-│   ├── models/              # Data models
-│   │   ├── auction_lot.py   # Pydantic models for the data
-│   │   └── db_models.py     # Database models
-│   ├── services/            # Business logic
-│   │   ├── parser.py        # JSON parsing logic
-│   │   ├── image_service.py # Image handling logic
-│   │   └── db_service.py    # Database operations
-│   └── utils/               # Utility functions
-│       ├── logging.py       # Logging utilities
-│       └── errors.py        # Error handling utilities
-├── tests/                   # Test cases
-├── Dockerfile               # Container definition
-├── requirements.txt         # Python dependencies
-├── test_app.py              # Testing script
-└── README.md                # Project documentation
-```
+- `process_first_five.py`: Main script to process auction data
+- `src/`: Source code modules
+  - `models/`: Data models
+  - `services/`: Services for processing and storage
+  - `config.py`: Configuration settings
 
-## Local Development
+## Data Flow
 
-1. Clone the repository
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/valuer-db-processor.git
-   cd valuer-db-processor
-   ```
+1. Read and parse JSON auction data
+2. Create placeholder images for each auction lot
+3. Store data in a local SQLite database
 
-2. Set up virtual environment
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # Linux/Mac
-   # or
-   venv\Scripts\activate     # Windows
-   ```
+## Future Enhancements
 
+<<<<<<< HEAD
 3. Install dependencies
    ```bash
    pip install -r requirements.txt
@@ -143,6 +164,11 @@ See `gcp-setup-commands.md` for detailed deployment instructions.
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+=======
+The next step would be to implement uploading to Google Cloud:
+- Upload images to Cloud Storage
+- Store data in Cloud SQL (PostgreSQL)
+>>>>>>> 2296ae64bae38ecfae3e327a8294e1749682a204
 
 ## License
 

@@ -39,6 +39,7 @@ class AuctionLotInput(BaseModel):
     currencySymbol: str
     
     photoPath: str
+    storagePath: Optional[str] = None
     
     # Additional fields will be captured in model.__dict__
     
@@ -66,6 +67,7 @@ class AuctionLotResponse(BaseModel):
     currencySymbol: str
     
     photoPath: str
+    storagePath: Optional[str] = None
     
     createdAt: str
     updatedAt: str
@@ -76,5 +78,9 @@ class AuctionLotResponse(BaseModel):
     model_config = {
         "json_encoders": {
             datetime.datetime: lambda v: v.isoformat()
+<<<<<<< HEAD
         }
     }
+=======
+        }
+>>>>>>> 2296ae64bae38ecfae3e327a8294e1749682a204

@@ -1,0 +1,52 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+# Install system dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc libpq-dev wget curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Add Cloud SQL Proxy for connecting to Cloud SQL
+RUN wget https://storage.googleapis.com/cloudsql-proxy/v1.33.6/cloud_sql_proxy.linux.amd64 -O /cloud_sql_proxy \
+    && chmod +x /cloud_sql_proxy
+
+# Expose port for the application
+EXPOSE 8080
+
+# Start the application with Cloud SQL proxy if INSTANCE_CONNECTION_NAME is provided
+# This is needed for Cloud Run to connect to Cloud SQL
+CMD if [ -n "$INSTANCE_CONNECTION_NAME" ]; then \
+        echo "Starting Cloud SQL Proxy..." && \
+        /cloud_sql_proxy -instances=${INSTANCE_CONNECTION_NAME}=tcp:5432 & \
+        echo "Starting application with Cloud SQL..." && \
+        exec gunicorn src.main:app \
+            --bind :8080 \
+            --workers 1 \
+            --worker-class uvicorn.workers.UvicornWorker \
+            --timeout 300 \
+            --keep-alive 5 \
+            --log-level info; \
+    else \
+        echo "Starting application without Cloud SQL..." && \
+        exec gunicorn src.main:app \
+            --bind :8080 \
+            --workers 1 \
+            --worker-class uvicorn.workers.UvicornWorker \
+            --timeout 300 \
+            --keep-alive 5 \
+            --log-level info; \
+    fi

@@ -20,55 +20,60 @@ var/
 .installed.cfg
 *.egg
 .pytest_cache/
-
-# Virtual Environment
+.coverage
+htmlcov/
+.tox/
 venv/
-ENV/
-.env
-.env.*
-!.env.example
+.venv/
+env/
 
 # Database
 *.db
+*.sqlite
 *.sqlite3
-
-# Local development
 local_data/
-local_images/
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
+# Images and media files
+local_images/
+downloaded_images/
 
 # Logs
 logs/
 *.log
 
-# OS specific
-.DS_Store
-Thumbs.db
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-
-# Environments
+# Environment variables
 .env
-.venv
-env/
-venv/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Google Cloud credentials
+*.json
+!example_json.json
+gcp-key.json
+credentials.json
+
+# Distribution / packaging
+node_modules/
+.npm
+
+# Other
+.cache/
+temp/
+tmp/
+
+# Virtual Environment
 ENV/
-env.bak/
-venv.bak/
+.env.*
+!.env.example
 
 # Local development
 .local/
