@@ -57,11 +57,11 @@ async def startup_event():
     
     # Log configuration information
     logger.info(f"Configuration: debug={settings.debug}, log_level={settings.log_level}")
-    logger.info(f"GCS bucket: {settings.gcs_bucket_name}")
-    logger.info(f"Image processing: batch_size={settings.image_processing_batch_size}, optimize={settings.optimize_images}")
+    logger.info(f"GCS bucket: {settings.gcs_bucket}")
+    logger.info(f"Image processing: batch_size={settings.batch_size}, optimize={settings.optimize_images}")
     
     # Initialize database if using SQLite
-    if 'sqlite' in settings.database_url:
+    if settings.db_type == 'sqlite':
         from src.services.db_service import init_db
         await init_db()
         logger.info("Database initialized")

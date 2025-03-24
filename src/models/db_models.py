@@ -36,6 +36,8 @@ class AuctionLot(Base):
     
     # Additional Data (stored as JSON)
     raw_data = Column(Text, nullable=True)
+    highlight_result = Column(Text, nullable=True)
+    ranking_info = Column(Text, nullable=True)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

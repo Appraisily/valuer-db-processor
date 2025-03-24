@@ -42,9 +42,10 @@ class AuctionLotInput(BaseModel):
     
     # Additional fields will be captured in model.__dict__
     
-    class Config:
-        populate_by_name = True
-        extra = "allow"  # Allow extra fields that will be stored in the raw_data JSON
+    model_config = {
+        "populate_by_name": True,
+        "extra": "allow"  # Allow extra fields that will be stored in the raw_data JSON
+    }
 
 class AuctionLotResponse(BaseModel):
     """
@@ -72,7 +73,8 @@ class AuctionLotResponse(BaseModel):
     # Store any additional data from the original input
     rawData: Dict[str, Any] = Field(default_factory=dict)
     
-    class Config:
-        json_encoders = {
+    model_config = {
+        "json_encoders": {
             datetime.datetime: lambda v: v.isoformat()
-        } 
+        }
+    }

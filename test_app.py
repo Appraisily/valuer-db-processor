@@ -69,17 +69,28 @@ async def test_app():
     """
     print("\n===== Testing Valuer DB Processor =====\n")
     
-    # Start the test server in a separate process
-    print("Please start the server in a separate terminal with:")
-    print("  uvicorn src.main:app --reload")
-    print("\n")
+    # Start the server in a subprocess
+    import subprocess
+    import time
     
     base_url = "http://localhost:8000"
     
-    # Wait for user to confirm the server is running
-    input("Press Enter once the server is running...\n")
+    print("Starting the server in the background...")
+    server_process = None
     
     try:
+        # Start the server
+        server_process = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "src.main:app", "--host", "127.0.0.1", "--port", "8000"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        
+        # Give the server time to start
+        print("Waiting for server to start...")
+        time.sleep(3)
+        print("Server should be running at http://localhost:8000")
+        
         # Test the health endpoint
         print(f"Testing health endpoint...")
         async with httpx.AsyncClient() as client:
@@ -103,7 +114,7 @@ async def test_app():
             print("\n✓ Process endpoint is working\n")
             
         print("All tests passed!")
-        print("Image will be downloaded from: https://image.invaluable.com/housePhotos/soulis/58/778358/H1081-L382842666.jpg")
+        print("Local image will be used from: ./local_images/soulis/58/778358/H1081-L382842666.jpg")
     
     except httpx.HTTPError as e:
         print(f"HTTP Error: {e}")
@@ -113,6 +124,17 @@ async def test_app():
     
     except Exception as e:
         print(f"Error: {e}")
+        
+    finally:
+        # Clean up the server process if it was started
+        if server_process:
+            print("Shutting down the server...")
+            server_process.terminate()
+            try:
+                server_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                server_process.kill()
+            print("Server shut down")
 
 if __name__ == "__main__":
-    asyncio.run(test_app()) 
+    asyncio.run(test_app())

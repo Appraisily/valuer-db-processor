@@ -63,9 +63,11 @@ class Settings(BaseSettings):
                 raise ValueError(f"{field_name} must be set when db_type is postgresql and env is production")
         return v
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": True,
+        "extra": "allow"
+    }
 
 @lru_cache()
 def get_settings() -> Settings:

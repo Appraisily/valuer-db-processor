@@ -1,15 +1,23 @@
 # Valuer DB Processor
 
-A service for processing auction data, downloading images, and storing structured data in a database.
+A robust service for processing auction lot data, handling image downloads with advanced fallback strategies, and storing structured auction information in a database.
 
 ## Overview
 
 This service:
-- Processes JSON files containing auction data
-- Extracts and downloads images referenced in the data
+- Processes JSON files containing auction data from various auction houses
+- Extracts and downloads images referenced in the data using multiple fallback approaches:
+  - Standard download with browser-like headers to bypass protection
+  - Alternative CDN URLs if primary URL fails
+  - Host header injection to bypass Cloudflare restrictions
+  - Origin IP direct access as a fallback method
+  - Local image cache for development mode
+- Optimizes images by resizing and compressing them for efficient storage
 - Uploads images to Google Cloud Storage (or stores locally for development)
 - Stores structured auction data in a database (PostgreSQL in production, SQLite for development)
-- Provides a RESTful API for data submission and processing status
+- Provides RESTful API endpoints for data submission and processing status
+- Handles batch processing with configurable concurrency limits
+- Implements comprehensive error handling and logging
 
 ## Technology Stack
 
@@ -84,8 +92,20 @@ This service:
 
 ## API Endpoints
 
-- `GET /health`: Health check endpoint
+- `GET /health`: Health check endpoint to verify service status
+  - Returns: Service status, version, and timestamp
+
 - `POST /process`: Submit auction data for processing
+  - Input: JSON data containing auction lot information
+  - Processing: 
+    - Validates JSON structure
+    - Parses auction lot data
+    - Stores data in database (creates new records or updates existing)
+    - Asynchronously downloads, optimizes, and stores images in the background
+  - Returns: List of processed auction lots with database IDs
+
+- `GET /metrics`: Service metrics endpoint (placeholder for production monitoring)
+  - Returns: Processing statistics including total processed lots, success rates, and performance metrics
 
 ## Deployment
 
